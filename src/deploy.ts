@@ -1,12 +1,14 @@
 import * as ftp from "basic-ftp";
 import fs from "fs";
-import { IFileList, IDiff, syncFileDescription, currentSyncFileVersion, IFtpDeployArgumentsWithDefaults } from "./types";
+import { IFileList, IDiff, syncFileDescription, currentSyncFileVersion, IFtpDeployArgumentsWithDefaults, Record } from "./types";
 import { HashDiff } from "./HashDiff";
 import { ILogger, retryRequest, ITimings, applyExcludeFilter, formatNumber } from "./utilities";
 import prettyBytes from "pretty-bytes";
 import { prettyError } from "./errorHandling";
 import { ensureDir, FTPSyncProvider } from "./syncProvider";
 import { getLocalFiles } from "./localFiles";
+import { Worker, workerData } from "worker_threads"
+import { Threading } from "./threading";
 
 async function downloadFileList(client: ftp.Client, logger: ILogger, path: string): Promise<IFileList> {
     // note: originally this was using a writable stream instead of a buffer file
@@ -29,7 +31,7 @@ function createLocalState(localFiles: IFileList, logger: ILogger, args: IFtpDepl
     logger.verbose("Local state created");
 }
 
-async function connect(client: ftp.Client, args: IFtpDeployArgumentsWithDefaults, logger: ILogger) {
+export async function connect(client: ftp.Client, args: IFtpDeployArgumentsWithDefaults, logger: ILogger | null) {
     let secure: boolean | "implicit" = false;
     if (args.protocol === "ftps") {
         secure = true;
@@ -55,13 +57,13 @@ async function connect(client: ftp.Client, args: IFtpDeployArgumentsWithDefaults
         });
     }
     catch (error) {
-        logger.all("Failed to connect, are you sure your server works via FTP or FTPS? Users sometimes get this error when the server only supports SFTP.");
+        logger?.all("Failed to connect, are you sure your server works via FTP or FTPS? Users sometimes get this error when the server only supports SFTP.");
         throw error;
     }
 
     if (args["log-level"] === "verbose") {
         client.trackProgress(info => {
-            logger.verbose(`${info.type} progress for "${info.name}". Progress: ${info.bytes} bytes of ${info.bytesOverall} bytes`);
+            logger?.verbose(`${info.type} progress for "${info.name}". Progress: ${info.bytes} bytes of ${info.bytesOverall} bytes`);
         });
     }
 }
@@ -129,16 +131,12 @@ export async function deploy(args: IFtpDeployArgumentsWithDefaults, logger: ILog
 
     const client = new ftp.Client(args.timeout);
 
-    global.reconnect = async function () {
+    let totalBytesUploaded = 0;
+    try {
+
         timings.start("connecting");
         await connect(client, args, logger);
         timings.stop("connecting");
-    }
-
-
-    let totalBytesUploaded = 0;
-    try {
-        await global.reconnect();
 
         const serverFiles = await getServerFiles(client, logger, timings, args);
 
@@ -181,16 +179,59 @@ export async function deploy(args: IFtpDeployArgumentsWithDefaults, logger: ILog
         });
         timings.stop("logging");
 
-
         totalBytesUploaded = diffs.sizeUpload + diffs.sizeReplace;
 
-        timings.start("upload");
-        try {
+
+        const folders = diffs.upload.filter(
+            (itemUpload) => itemUpload.type === "folder"
+        );
+
+        const numWorkers = args["number-of-connections"];
+
+        if (numWorkers > 1 && folders.length > 0) {
+            const threading = new Threading(numWorkers, args);
+
+            const topLevelFiles = diffs.upload.filter(
+                (itemUpload) => itemUpload.type === "file" &&
+                    itemUpload.name.split('/').length == 1
+            );
+
+            threading.taskQueue = [...topLevelFiles];
+            timings.start("connecting");
+            threading.start();
+            timings.stop("connecting");
+
+            timings.start("upload");
             const syncProvider = new FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"]);
-            await syncProvider.syncLocalToServer(diffs);
-        }
-        finally {
+
+            for (const folder of folders) {
+                await syncProvider.syncRecordToServer(folder, 'upload');
+                const filesInFolder = diffs.upload.filter(
+                    (itemUpload) =>
+                        itemUpload.type == 'file' &&
+                        itemUpload.name.startsWith(folder.name + '/') &&
+                        itemUpload.name.split('/').length == folder.name.split('/').length + 1
+                );
+                if (filesInFolder.length > 0) {
+                    threading.addTasks(filesInFolder);
+                }
+            };
+
+            await threading.waitForCompletion();
+            await client.uploadFrom(args["local-dir"] + args["state-name"], args["server-dir"] + args["state-name"]);
             timings.stop("upload");
+
+            await threading.stop();
+        }
+        else {
+            timings.start("upload");
+            try {
+                const syncProvider = new FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"]);
+                await syncProvider.syncLocalToServer(diffs);
+            }
+            finally {
+                timings.stop("upload");
+            }
         }
     }
     catch (error) {

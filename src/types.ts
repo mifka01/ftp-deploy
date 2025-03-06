@@ -67,6 +67,12 @@ export interface IFtpDeployArguments {
      * @default 30000 (30 seconds)
      */
     timeout?: number;
+
+    /**
+     * Number of parallel connections to use when uploading files
+     * @default 1
+     */
+    "number-of-connections"?: number;
 }
 
 export interface IFtpDeployArgumentsWithDefaults {
@@ -84,6 +90,7 @@ export interface IFtpDeployArgumentsWithDefaults {
     "log-level": "minimal" | "standard" | "verbose";
     security: "strict" | "loose";
     timeout: number;
+    "number-of-connections": number;
 }
 
 export interface IFile {
@@ -100,6 +107,8 @@ export interface IFolder {
 }
 
 export type Record = IFolder | IFile;
+
+export type FTPAction = 'upload' | 'delete' | 'replace';
 
 export interface IFileList {
     /** Give some info to people opening this file wondering what it is */

@@ -15,9 +15,9 @@ export const excludeDefaults = ["**/.git*", "**/.git*/**", "**/node_modules/**"]
  * After the initial sync only differences are synced, making deployments super fast!
  */
 export async function deploy(args: IFtpDeployArguments): Promise<void> {
-  const argsWithDefaults = getDefaultSettings(args);
-  const logger = new Logger(argsWithDefaults["log-level"]);
-  const timings = new Timings();
+    const argsWithDefaults = getDefaultSettings(args);
+    const logger = new Logger(argsWithDefaults["log-level"]);
+    const timings = new Timings();
 
-  await deployCustom(argsWithDefaults, logger, timings);
+    await deployCustom(argsWithDefaults, logger, timings);
 }

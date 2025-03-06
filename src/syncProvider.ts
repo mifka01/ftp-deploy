@@ -1,6 +1,6 @@
 import prettyBytes from "pretty-bytes";
 import type * as ftp from "basic-ftp";
-import { DiffResult, ErrorCode, IFilePath } from "./types";
+import { DiffResult, ErrorCode, IFilePath, Record, FTPAction } from "./types";
 import { ILogger, pluralize, retryRequest, ITimings } from "./utilities";
 
 export async function ensureDir(client: ftp.Client, logger: ILogger, timings: ITimings, folder: string): Promise<void> {
@@ -80,7 +80,7 @@ export class FTPSyncProvider implements ISyncProvider {
     }
 
     async createFolder(folderPath: string) {
-        this.logger.all(`creating folder "${folderPath + "/"}"`);
+        // this.logger.all(`creating folder "${folderPath + "/"}"`);
 
         if (this.dryRun === true) {
             return;
@@ -144,6 +144,32 @@ export class FTPSyncProvider implements ISyncProvider {
         }
 
         this.logger.verbose(`  file ${typePast}`);
+    }
+
+    async syncRecordToServer(record: Record, action: FTPAction) {
+        const actions = {
+            upload: async () => {
+                if (record.type === 'folder') {
+                    await this.createFolder(record.name);
+                } else {
+                    await this.uploadFile(record.name, "upload");
+                }
+            },
+            delete: async () => {
+                if (record.type === 'folder') {
+                    await this.removeFolder(record.name);
+                } else {
+                    await this.removeFile(record.name);
+                }
+            },
+            replace: async () => {
+                await this.uploadFile(record.name, "replace");
+            }
+        };
+
+        if (actions[action]) {
+            await actions[action]();
+        }
     }
 
     async syncLocalToServer(diffs: DiffResult) {

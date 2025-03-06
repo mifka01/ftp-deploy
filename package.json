@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "deploy": "tsc && node ./dist/cli.js --log-level verbose ---server samkirkland.com --protocol ftp --username \"ftp-deploy@samkirkland.com\" --password \"actualPasswordHere\" --exclude dist/** --exclude **/.git* --exclude **/.git*/** --exclude **/node_modules/** --exclude package.json",
+    "deploy": "tsc && node ./dist/cli.js --log-level standard ---server 127.0.0.1 --port 2121 --protocol ftp --number-of-connections 3 --username \"one\" --password \"admin!\" --exclude dist/** --exclude **/.git* --exclude **/.git*/** --exclude package.json",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
     "test-watch": "jest --watch"
@@ -26,6 +26,7 @@
   "author": "Sam Kirkland",
   "license": "MIT",
   "dependencies": {
+    "@samkirkland/ftp-deploy": "^1.2.4",
     "basic-ftp": "^5.0.5",
     "lodash": "^4.17.21",
     "multimatch": "^5.0.0",
