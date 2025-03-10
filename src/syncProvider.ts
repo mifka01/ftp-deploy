@@ -2,6 +2,7 @@ import prettyBytes from "pretty-bytes";
 import type * as ftp from "basic-ftp";
 import { DiffResult, ErrorCode, IFilePath, Record, FTPAction } from "./types";
 import { ILogger, pluralize, retryRequest, ITimings } from "./utilities";
+import { Threading } from "./threading";
 
 export async function ensureDir(client: ftp.Client, logger: ILogger, timings: ITimings, folder: string): Promise<void> {
     timings.start("changingDir");
@@ -137,7 +138,7 @@ export class FTPSyncProvider implements ISyncProvider {
     async uploadFile(filePath: string, type: "upload" | "replace" = "upload") {
         const typePresent = type === "upload" ? "uploading" : "replacing";
         const typePast = type === "upload" ? "uploaded" : "replaced";
-        this.logger.all(`${typePresent} "${filePath}"`);
+        // this.logger.all(`${typePresent} "${filePath}"`);
 
         if (this.dryRun === false) {
             await retryRequest(this.logger, async () => await this.client.uploadFrom(this.localPath + filePath, filePath));
@@ -172,13 +173,68 @@ export class FTPSyncProvider implements ISyncProvider {
         }
     }
 
-    async syncLocalToServer(diffs: DiffResult) {
+    printSyncHeader(diffs: DiffResult) {
         const totalCount = diffs.delete.length + diffs.upload.length + diffs.replace.length;
 
         this.logger.all(`----------------------------------------------------------------`);
         this.logger.all(`Making changes to ${totalCount} ${pluralize(totalCount, "file/folder", "files/folders")} to sync server state`);
         this.logger.all(`Uploading: ${prettyBytes(diffs.sizeUpload)} -- Deleting: ${prettyBytes(diffs.sizeDelete)} -- Replacing: ${prettyBytes(diffs.sizeReplace)}`);
         this.logger.all(`----------------------------------------------------------------`);
+    }
+
+    printSyncFooter() {
+        this.logger.all(`----------------------------------------------------------------`);
+        this.logger.all(`🎉 Sync complete. Saving current server state to "${this.serverPath + this.stateName}"`);
+    }
+
+    async syncLocalToServerMultiThread(diffs: DiffResult, threading: Threading) {
+        this.printSyncHeader(diffs);
+
+        const topLevelFiles =
+            diffs.upload.filter(
+                item => item.type === "file" &&
+                    item.name.split('/').length == 1 &&
+                    item.name !== this.stateName
+            );
+
+        threading.addTasks(topLevelFiles, 'upload');
+
+        for (const folder of diffs.upload.filter(item => item.type === "folder")) {
+            await this.createFolder(folder.name);
+
+            const filesInFolder = diffs.upload.filter(
+                (item) =>
+                    item.type == 'file' &&
+                    item.name.startsWith(folder.name + '/') &&
+                    item.name.split('/').length == folder.name.split('/').length + 1 &&
+                    item.name !== this.stateName
+            );
+
+            if (filesInFolder.length > 0) {
+                threading.addTasks(filesInFolder, 'upload');
+            }
+        };
+
+        threading.addTasks(diffs.replace.filter(item => item.type === 'file' && item.name !== this.stateName)
+            , 'replace');
+
+        threading.addTasks(diffs.delete.filter(item => item.type === 'file'), 'delete');
+
+        for (const folder of diffs.delete.filter(item => item.type === "folder")) {
+            await this.removeFolder(folder.name);
+        }
+
+        await threading.waitForAllTasks();
+
+        this.printSyncFooter();
+
+        if (this.dryRun === false) {
+            await retryRequest(this.logger, async () => await this.client.uploadFrom(this.localPath + this.stateName, this.stateName));
+        }
+    }
+
+    async syncLocalToServer(diffs: DiffResult) {
+        this.printSyncHeader(diffs);
 
         // create new folders
         for (const file of diffs.upload.filter(item => item.type === "folder")) {

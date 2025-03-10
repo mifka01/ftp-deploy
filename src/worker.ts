@@ -1,20 +1,16 @@
 import { workerData, parentPort } from "worker_threads";
 import * as ftp from "basic-ftp";
-import { IFtpDeployArgumentsWithDefaults, Record } from "./types";
+import { ActionRecord, IFtpDeployArgumentsWithDefaults } from "./types";
 import { FTPSyncProvider } from "./syncProvider";
 import { connect } from "./deploy";
-import { ILogger } from "./utilities";
+import { Logger } from "./utilities";
 
-class MockedLogger implements ILogger {
-    all() { }
-    standard() { }
-    verbose() { }
-}
 
 (async () => {
     const args: IFtpDeployArgumentsWithDefaults = workerData.args;
     const client: ftp.Client = new ftp.Client(args.timeout);
-    const logger: ILogger = new MockedLogger();
+    const logger: Logger = new Logger(args['log-level']);
+
     const timings = {
         start: () => { },
         stop: () => { },
@@ -39,27 +35,31 @@ class MockedLogger implements ILogger {
         process.exit(1);
     }
 
-    async function processTask(task: Record) {
-
+    async function processTask(task: ActionRecord): Promise<boolean> {
         try {
-            await syncProvider.syncRecordToServer(task, "upload");
-            parentPort?.postMessage({ type: "taskCompleted", result: task.name });
+            await syncProvider.syncRecordToServer(task.record, task.action);
+            parentPort?.postMessage({ type: "taskCompleted", result: task.record.name });
             return true;
         } catch (error) {
-            console.error("Failed to upload task", task, error);
+            parentPort?.postMessage({ type: "taskFailed", result: { task: task, error } });
             return false;
         }
     }
 
     parentPort?.on("message", async (msg) => {
         if (msg.type === "newTask") {
-            const task = msg.task as Record;
+            const task = msg.task as ActionRecord;
             await processTask(task);
+            return;
         }
-    });
 
-    parentPort?.on("exit", async () => {
-        client.close();
+        if (msg === 'exit') {
+            client.close();
+            console.log('Worker closed FTP connection');
+            if (client.closed) {
+                process.exit(0);
+            }
+        }
     });
 
 })();

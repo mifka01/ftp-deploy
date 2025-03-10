@@ -152,23 +152,23 @@ export async function deploy(args: IFtpDeployArgumentsWithDefaults, logger: ILog
 
         const diffs = diffTool.getDiffs(localFiles, serverFiles);
 
-        diffs.upload.filter((itemUpload) => itemUpload.type === "folder").map((itemUpload) => {
-            logger.standard(`📁 Create: ${itemUpload.name}`);
+        diffs.upload.filter((item) => item.type === "folder").map((item) => {
+            logger.standard(`📁 Create: ${item.name}`);
         });
 
-        diffs.upload.filter((itemUpload) => itemUpload.type === "file").map((itemUpload) => {
-            logger.standard(`📄 Upload: ${itemUpload.name}`);
+        diffs.upload.filter((item) => item.type === "file").map((item) => {
+            logger.standard(`📄 Upload: ${item.name}`);
         });
 
         diffs.replace.map((itemReplace) => {
             logger.standard(`🔁 File replace: ${itemReplace.name}`);
         });
 
-        diffs.delete.filter((itemUpload) => itemUpload.type === "file").map((itemDelete) => {
+        diffs.delete.filter((item) => item.type === "file").map((itemDelete) => {
             logger.standard(`📄 Delete: ${itemDelete.name}    `);
         });
 
-        diffs.delete.filter((itemUpload) => itemUpload.type === "folder").map((itemDelete) => {
+        diffs.delete.filter((item) => item.type === "folder").map((itemDelete) => {
             logger.standard(`📁 Delete: ${itemDelete.name}    `);
         });
 
@@ -181,47 +181,24 @@ export async function deploy(args: IFtpDeployArgumentsWithDefaults, logger: ILog
 
         totalBytesUploaded = diffs.sizeUpload + diffs.sizeReplace;
 
-
-        const folders = diffs.upload.filter(
-            (itemUpload) => itemUpload.type === "folder"
-        );
-
         const numWorkers = args["number-of-connections"];
-
-        if (numWorkers > 1 && folders.length > 0) {
+        if (numWorkers > 1) {
             const threading = new Threading(numWorkers, args);
 
-            const topLevelFiles = diffs.upload.filter(
-                (itemUpload) => itemUpload.type === "file" &&
-                    itemUpload.name.split('/').length == 1
-            );
-
-            threading.taskQueue = [...topLevelFiles];
-            timings.start("connecting");
-            threading.start();
-            timings.stop("connecting");
-
             timings.start("upload");
-            const syncProvider = new FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"]);
+            try {
+                timings.start("connecting");
 
-            for (const folder of folders) {
-                await syncProvider.syncRecordToServer(folder, 'upload');
-                const filesInFolder = diffs.upload.filter(
-                    (itemUpload) =>
-                        itemUpload.type == 'file' &&
-                        itemUpload.name.startsWith(folder.name + '/') &&
-                        itemUpload.name.split('/').length == folder.name.split('/').length + 1
-                );
-                if (filesInFolder.length > 0) {
-                    threading.addTasks(filesInFolder);
-                }
-            };
+                await threading.start();
+                timings.stop("connecting");
 
-            await threading.waitForCompletion();
-            await client.uploadFrom(args["local-dir"] + args["state-name"], args["server-dir"] + args["state-name"]);
-            timings.stop("upload");
-
-            await threading.stop();
+                const syncProvider = new FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"]);
+                await syncProvider.syncLocalToServerMultiThread(diffs, threading);
+            }
+            finally {
+                timings.stop("upload");
+                await threading.stop();
+            }
         }
         else {
             timings.start("upload");

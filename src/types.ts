@@ -108,6 +108,11 @@ export interface IFolder {
 
 export type Record = IFolder | IFile;
 
+export type ActionRecord = {
+    action: FTPAction;
+    record: Record;
+}
+
 export type FTPAction = 'upload' | 'delete' | 'replace';
 
 export interface IFileList {

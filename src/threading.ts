@@ -1,86 +1,98 @@
-import { IFtpDeployArgumentsWithDefaults, Record } from "./types";
-import { Worker, parentPort, workerData } from "worker_threads";
-export type ActiveWorker = {
-    worker: Worker;
-    active: boolean;
-}
+import { IFtpDeployArgumentsWithDefaults, ActionRecord, Record, FTPAction } from "./types";
+import { Worker } from "worker_threads";
+
 export class Threading {
     constructor(numWorkers: number, args: IFtpDeployArgumentsWithDefaults) {
         this.numWorkers = numWorkers;
         this.args = args;
         this.taskQueue = [];
         this.workers = [];
+        this.idleWorkers = [];
+        this.activeTasks = 0;
     }
     private numWorkers: number;
     private args: IFtpDeployArgumentsWithDefaults;
-    public taskQueue: Record[];
-    private workers: ActiveWorker[];
+    public taskQueue: ActionRecord[];
+    private workers: Worker[];
+    private idleWorkers: Worker[];
+    private activeTasks: number;
+
     private async createWorkers() {
         for (let i = 0; i < this.numWorkers; i++) {
             const worker = new Worker('./src/worker.js', { workerData: { path: './worker.ts', args: this.args } });
-            this.workers.push({ worker, active: false });
+
             worker.on('message', (msg) => {
                 if (msg.type === 'taskCompleted') {
-                    console.log(`Tasks remaining: ${this.taskQueue.length}`);
-                    if (this.taskQueue.length > 0) {
-                        const nextTask = this.taskQueue.pop();
-                        worker.postMessage({ type: 'newTask', task: nextTask });
-                        this.workers[i].active = true;
-                    } else {
-                        this.workers[i].active = false;
+                    this.idleWorkers.push(worker);
+                    this.activeTasks--;
+                    this.processNextTask();
+                }
+                if (msg.type === 'taskFailed') {
+                    // TODO!!! this should happen only if task fails with error 500 OOPS: vsf_sysutil_bind
+                    // meaning that the worker cant get open port from server to connect or something like that.
+                    // task should be requeued, but the worker probably shouldn't be terminated in other error cases
+                    this.activeTasks--;
+                    if (msg.result.task) {
+                        const task = msg.result.task as ActionRecord;
+                        this.taskQueue.push(task);
+                        this.activeTasks++;
                     }
+
+                    worker.postMessage('exit');
+                    worker.terminate();
                 }
             });
+
             worker.on('error', (error) => {
-                console.log(`Worker error: ${error}`);
-                this.workers[i].active = false;
+                throw error;
             });
+
             worker.on('exit', (code) => {
                 if (code !== 0) {
                     console.log(`Worker stopped with exit code ${code}`);
                 }
             });
+
+            this.workers.push(worker)
+            this.idleWorkers.push(worker)
         }
     }
-    public async assignInitialTasks() {
-        const tasksToAssign = Math.min(this.numWorkers, this.taskQueue.length);
-        for (let i = 0; i < tasksToAssign; i++) {
-            const task = this.taskQueue.pop();
-            if (task) {
-                this.workers[i].active = true;
-                this.workers[i].worker.postMessage({ type: 'newTask', task });
-            }
-        }
-    }
-    public async waitForCompletion(): Promise<void> {
-        while (this.workers.some(worker => worker.active) || this.taskQueue.length > 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            console.log(`Tasks remaining: ${this.taskQueue.length}`);
-            console.log(`Workers active: ${this.workers.filter(worker => worker.active).length}`);
-        }
-    }
-    public async addTasks(tasks: Record[]) {
-        this.taskQueue.push(...tasks);
-        this.process();
-    }
-    public async process() {
-        for (let i = 0; i < this.numWorkers; i++) {
-            if (!this.workers[i].active && this.taskQueue.length > 0) {
-                const task = this.taskQueue.pop();
-                this.workers[i].active = true;
-                this.workers[i].worker.postMessage({ type: 'newTask', task });
-            }
-        }
-    }
-    public async start(): Promise<void> {
-        await this.createWorkers();
-        await this.assignInitialTasks();
-    }
-    public async stop() {
-        this.workers.forEach(worker => {
-            worker.worker.postMessage({ type: 'exit' });
-            worker.worker.terminate();
+    public addTasks(tasks: Record[], action: FTPAction) {
+        tasks.forEach(task => {
+            this.taskQueue.push({ action, record: task });
         });
+        this.activeTasks += tasks.length;
+        this.processNextTask();
+    }
+
+    public processNextTask() {
+        if (this.taskQueue.length > 0 && this.idleWorkers.length > 0) {
+            const task = this.taskQueue.shift();
+            if (!task) {
+                return;
+            }
+            const worker = this.idleWorkers.shift();
+            worker?.postMessage({ type: 'newTask', task });
+        }
+    }
+
+    async waitForAllTasks() {
+        while (this.activeTasks > 0 || this.taskQueue.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
+    async start() {
+        await this.createWorkers();
+        this.processNextTask();
+    }
+
+    async stop() {
+        for (const worker of this.workers) {
+            worker.postMessage('exit');
+            await worker.terminate();
+        };
+
         this.workers = [];
     }
 }
