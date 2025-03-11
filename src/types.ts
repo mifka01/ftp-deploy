@@ -73,6 +73,12 @@ export interface IFtpDeployArguments {
      * @default 1
      */
     "number-of-connections"?: number;
+
+    /**
+     * Time in seconds to wait before trying to reconnect to the server to prevent server timeout for connection
+     * @default 60
+     * */
+    "reconnect-timeout"?: number;
 }
 
 export interface IFtpDeployArgumentsWithDefaults {
@@ -91,6 +97,7 @@ export interface IFtpDeployArgumentsWithDefaults {
     security: "strict" | "loose";
     timeout: number;
     "number-of-connections": number;
+    "reconnect-timeout": number;
 }
 
 export interface IFile {

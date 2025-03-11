@@ -189,7 +189,8 @@ export function getDefaultSettings(withoutDefaults: IFtpDeployArguments): IFtpDe
         "log-level": withoutDefaults["log-level"] ?? "standard",
         "security": withoutDefaults.security ?? "loose",
         "timeout": withoutDefaults.timeout ?? 30000,
-        "number-of-connections": withoutDefaults["number-of-connections"] ?? 1
+        "number-of-connections": withoutDefaults["number-of-connections"] ?? 1,
+        "reconnect-timeout": withoutDefaults["reconnect-timeout"] ?? 60
     };
 }
 

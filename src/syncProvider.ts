@@ -30,7 +30,9 @@ interface ISyncProvider {
 }
 
 export class FTPSyncProvider implements ISyncProvider {
-    constructor(client: ftp.Client, logger: ILogger, timings: ITimings, localPath: string, serverPath: string, stateName: string, dryRun: boolean) {
+    constructor(client: ftp.Client, logger: ILogger, timings: ITimings, localPath: string, serverPath: string, stateName: string, dryRun: boolean,
+        reconnectCallback?: () => Promise<void>
+    ) {
         this.client = client;
         this.logger = logger;
         this.timings = timings;
@@ -38,6 +40,7 @@ export class FTPSyncProvider implements ISyncProvider {
         this.serverPath = serverPath;
         this.stateName = stateName;
         this.dryRun = dryRun;
+        this.reconnectCallback = reconnectCallback;
     }
 
     private client: ftp.Client;
@@ -47,6 +50,7 @@ export class FTPSyncProvider implements ISyncProvider {
     private serverPath: string;
     private dryRun: boolean;
     private stateName: string;
+    private reconnectCallback: (() => Promise<void>) | undefined;
 
 
     /**
@@ -136,7 +140,7 @@ export class FTPSyncProvider implements ISyncProvider {
     }
 
     async uploadFile(filePath: string, type: "upload" | "replace" = "upload") {
-        const typePresent = type === "upload" ? "uploading" : "replacing";
+        // const typePresent = type === "upload" ? "uploading" : "replacing";
         const typePast = type === "upload" ? "uploaded" : "replaced";
         // this.logger.all(`${typePresent} "${filePath}"`);
 
@@ -148,6 +152,9 @@ export class FTPSyncProvider implements ISyncProvider {
     }
 
     async syncRecordToServer(record: Record, action: FTPAction) {
+        if (this.reconnectCallback) {
+            await this.reconnectCallback();
+        }
         const actions = {
             upload: async () => {
                 if (record.type === 'folder') {
@@ -190,39 +197,39 @@ export class FTPSyncProvider implements ISyncProvider {
     async syncLocalToServerMultiThread(diffs: DiffResult, threading: Threading) {
         this.printSyncHeader(diffs);
 
-        const topLevelFiles =
-            diffs.upload.filter(
-                item => item.type === "file" &&
-                    item.name.split('/').length == 1 &&
-                    item.name !== this.stateName
-            );
+
+        const uploadFiles = diffs.upload.filter(item => item.type === "file" && item.name !== this.stateName);
+        const topLevelFiles = uploadFiles.filter(item => item.name.split('/').length == 1);
+        const allFolders = diffs.upload.filter(item => item.type === "folder");
+        const replaceFiles = diffs.replace.filter(item => item.type === 'file' && item.name !== this.stateName);
+        const deleteFiles = diffs.delete.filter(item => item.type === 'file');
+        const deleteFolders = diffs.delete.filter(item => item.type === "folder");
 
         threading.addTasks(topLevelFiles, 'upload');
 
-        for (const folder of diffs.upload.filter(item => item.type === "folder")) {
-            await this.createFolder(folder.name);
+        const filesByFolder = new Map<string, any[]>();
+        uploadFiles.forEach(item => {
+            const folderName = item.name.split('/').slice(0, -1).join('/');
+            if (!filesByFolder.has(folderName)) {
+                filesByFolder.set(folderName, []);
+            }
+            filesByFolder.get(folderName)?.push(item);
+        });
 
-            const filesInFolder = diffs.upload.filter(
-                (item) =>
-                    item.type == 'file' &&
-                    item.name.startsWith(folder.name + '/') &&
-                    item.name.split('/').length == folder.name.split('/').length + 1 &&
-                    item.name !== this.stateName
-            );
-
+        for (const folder of allFolders) {
+            await this.syncRecordToServer(folder, 'upload');
+            const filesInFolder = filesByFolder.get(folder.name) || [];
             if (filesInFolder.length > 0) {
                 threading.addTasks(filesInFolder, 'upload');
             }
-        };
-
-        threading.addTasks(diffs.replace.filter(item => item.type === 'file' && item.name !== this.stateName)
-            , 'replace');
-
-        threading.addTasks(diffs.delete.filter(item => item.type === 'file'), 'delete');
-
-        for (const folder of diffs.delete.filter(item => item.type === "folder")) {
-            await this.removeFolder(folder.name);
         }
+
+        for (const folder of deleteFolders) {
+            await this.syncRecordToServer(folder, 'delete');
+        }
+
+        threading.addTasks(replaceFiles, 'replace');
+        threading.addTasks(deleteFiles, 'delete');
 
         await threading.waitForAllTasks();
 
@@ -237,29 +244,29 @@ export class FTPSyncProvider implements ISyncProvider {
         this.printSyncHeader(diffs);
 
         // create new folders
-        for (const file of diffs.upload.filter(item => item.type === "folder")) {
-            await this.createFolder(file.name);
+        for (const folder of diffs.upload.filter(item => item.type === "folder")) {
+            await this.syncRecordToServer(folder, 'upload');
         }
 
         // upload new files
         for (const file of diffs.upload.filter(item => item.type === "file").filter(item => item.name !== this.stateName)) {
-            await this.uploadFile(file.name, "upload");
+            await this.syncRecordToServer(file, 'upload');
         }
 
         // replace new files
         for (const file of diffs.replace.filter(item => item.type === "file").filter(item => item.name !== this.stateName)) {
             // note: FTP will replace old files with new files. We run replacements after uploads to limit downtime
-            await this.uploadFile(file.name, "replace");
+            await this.syncRecordToServer(file, 'replace');
         }
 
         // delete old files
         for (const file of diffs.delete.filter(item => item.type === "file")) {
-            await this.removeFile(file.name);
+            await this.syncRecordToServer(file, 'delete');
         }
 
         // delete old folders
-        for (const file of diffs.delete.filter(item => item.type === "folder")) {
-            await this.removeFolder(file.name);
+        for (const folder of diffs.delete.filter(item => item.type === "folder")) {
+            await this.syncRecordToServer(folder, 'delete');
         }
 
         this.logger.all(`----------------------------------------------------------------`);

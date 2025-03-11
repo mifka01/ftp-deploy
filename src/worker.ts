@@ -5,11 +5,14 @@ import { FTPSyncProvider } from "./syncProvider";
 import { connect } from "./deploy";
 import { Logger } from "./utilities";
 
-
 (async () => {
     const args: IFtpDeployArgumentsWithDefaults = workerData.args;
-    const client: ftp.Client = new ftp.Client(args.timeout);
+    let client: ftp.Client = new ftp.Client(args.timeout);
     const logger: Logger = new Logger(args['log-level']);
+    const reconnectInterval = args["reconnect-timeout"] * 1000;
+
+    let lastConnectionTime = 0;
+
 
     const timings = {
         start: () => { },
@@ -18,29 +21,69 @@ import { Logger } from "./utilities";
         getTimeFormatted: () => "0ms"
     }
 
-    const syncProvider = new FTPSyncProvider(
-        client,
-        logger,
-        timings,
-        args["local-dir"],
-        args["server-dir"],
-        args["state-name"],
-        args["dry-run"]
-    );
+    let syncProvider: FTPSyncProvider;
 
-    try {
-        await connect(client, args, logger);
-    } catch (error) {
-        console.error("Worker failed to connect to FTP server", error);
+    const establishConnection = async () => {
+        if (client && !client.closed) {
+            client.close();
+        }
+
+        client = new ftp.Client(args.timeout);
+
+        try {
+            await connect(client, args, logger);
+            lastConnectionTime = Date.now();
+
+            syncProvider = new FTPSyncProvider(
+                client,
+                logger,
+                timings,
+                args["local-dir"],
+                args["server-dir"],
+                args["state-name"],
+                args["dry-run"]
+            );
+
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    if (!await establishConnection()) {
         process.exit(1);
+    }
+
+    const ensureFreshConnection = async (): Promise<boolean> => {
+        const currentTime = Date.now();
+        if (currentTime - lastConnectionTime >= reconnectInterval) {
+            return await establishConnection();
+        }
+        return true;
     }
 
     async function processTask(task: ActionRecord): Promise<boolean> {
         try {
+            if (!await ensureFreshConnection()) {
+                return false;
+            }
+
             await syncProvider.syncRecordToServer(task.record, task.action);
             parentPort?.postMessage({ type: "taskCompleted", result: task.record.name });
             return true;
         } catch (error) {
+            if (error instanceof Error && error.message.includes("Not connected")) {
+                if (await establishConnection()) {
+                    try {
+                        await syncProvider.syncRecordToServer(task.record, task.action);
+                        parentPort?.postMessage({ type: "taskCompleted", result: task.record.name });
+                        return true;
+                    } catch (retryError) {
+                        parentPort?.postMessage({ type: "taskFailed", result: { task: task, error: retryError } });
+                        return false;
+                    }
+                }
+            }
             parentPort?.postMessage({ type: "taskFailed", result: { task: task, error } });
             return false;
         }

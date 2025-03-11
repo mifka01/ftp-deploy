@@ -590,7 +590,8 @@ describe("getLocalFiles", () => {
             "log-level": "standard",
             security: "loose",
             timeout: 30000,
-            "number-of-connections": 1
+            "number-of-connections": 1,
+            "reconnect-timeout": 60
         });
 
         const mainYamlDiff = localDirDiffs.data.find(diff => diff.name === "workflows/main.yml")! as IFile;
@@ -762,7 +763,8 @@ describe("getDefaultSettings", () => {
             "log-level": "verbose",
             security: "strict",
             timeout: 1234,
-            "number-of-connections": 1
+            "number-of-connections": 1,
+            "reconnect-timeout": 60
         };
 
         expect(getDefaultSettings(customSettings)).toEqual(customSettings);

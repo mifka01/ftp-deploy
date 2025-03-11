@@ -7,7 +7,6 @@ import prettyBytes from "pretty-bytes";
 import { prettyError } from "./errorHandling";
 import { ensureDir, FTPSyncProvider } from "./syncProvider";
 import { getLocalFiles } from "./localFiles";
-import { Worker, workerData } from "worker_threads"
 import { Threading } from "./threading";
 
 async function downloadFileList(client: ftp.Client, logger: ILogger, path: string): Promise<IFileList> {
@@ -66,6 +65,27 @@ export async function connect(client: ftp.Client, args: IFtpDeployArgumentsWithD
             logger?.verbose(`${info.type} progress for "${info.name}". Progress: ${info.bytes} bytes of ${info.bytesOverall} bytes`);
         });
     }
+}
+
+export async function ensureFreshConnection(client: ftp.Client, args: IFtpDeployArgumentsWithDefaults, timings: ITimings, logger: ILogger, lastConnectionTime: number): Promise<number> {
+    const currentTime = Date.now();
+    if (currentTime - lastConnectionTime >= args["reconnect-timeout"] * 1000) {
+        logger.verbose("Client connection interval expired, refreshing FTP connection");
+
+        if (!client.closed) {
+            logger.verbose("Closing existing FTP connection for refresh");
+            client.close();
+        }
+
+        timings.start("connecting");
+        await connect(client, args, logger);
+        timings.stop("connecting");
+
+        logger.verbose("FTP connection refreshed at", new Date().toLocaleString());
+
+        return Date.now();
+    }
+    return lastConnectionTime;
 }
 
 export async function getServerFiles(client: ftp.Client, logger: ILogger, timings: ITimings, args: IFtpDeployArgumentsWithDefaults): Promise<IFileList> {
@@ -130,6 +150,7 @@ export async function deploy(args: IFtpDeployArgumentsWithDefaults, logger: ILog
     createLocalState(localFiles, logger, args);
 
     const client = new ftp.Client(args.timeout);
+    const lastConnectionTimeRef = { time: 0 };
 
     let totalBytesUploaded = 0;
     try {
@@ -192,7 +213,13 @@ export async function deploy(args: IFtpDeployArgumentsWithDefaults, logger: ILog
                 await threading.start();
                 timings.stop("connecting");
 
-                const syncProvider = new FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"]);
+                const syncProvider = new FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"]
+                    ,
+                    async () => {
+                        lastConnectionTimeRef.time = await ensureFreshConnection(client, args, timings, logger, lastConnectionTimeRef.time);
+                    }
+
+                );
                 await syncProvider.syncLocalToServerMultiThread(diffs, threading);
             }
             finally {
@@ -203,7 +230,11 @@ export async function deploy(args: IFtpDeployArgumentsWithDefaults, logger: ILog
         else {
             timings.start("upload");
             try {
-                const syncProvider = new FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"]);
+                const syncProvider = new FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"],
+                    async () => {
+                        lastConnectionTimeRef.time = await ensureFreshConnection(client, args, timings, logger, lastConnectionTimeRef.time);
+                    }
+                );
                 await syncProvider.syncLocalToServer(diffs);
             }
             finally {

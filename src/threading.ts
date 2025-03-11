@@ -10,6 +10,7 @@ export class Threading {
         this.idleWorkers = [];
         this.activeTasks = 0;
     }
+
     private numWorkers: number;
     private args: IFtpDeployArgumentsWithDefaults;
     public taskQueue: ActionRecord[];
@@ -38,6 +39,8 @@ export class Threading {
                         this.activeTasks++;
                     }
 
+                    console.log('Task failed', msg.result.error);
+                    console.log(msg.result.task);
                     worker.postMessage('exit');
                     worker.terminate();
                 }
