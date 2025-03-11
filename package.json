@@ -1,6 +1,6 @@
 {
   "name": "@mifka01/ftp-deploy",
-  "version": "1.4.7",
+  "version": "1.4.9",
   "private": false,
   "description": "Deploy files to a ftp server",
   "main": "dist/module.js",
@@ -26,7 +26,7 @@
   "author": "Sam Kirkland, Radim Mifka",
   "license": "MIT",
   "dependencies": {
-    "@mifka01/ftp-deploy": "^1.4.7",
+    "@mifka01/ftp-deploy": "^1.4.9",
     "basic-ftp": "^5.0.5",
     "lodash": "^4.17.21",
     "multimatch": "^5.0.0",

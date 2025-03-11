@@ -22,7 +22,7 @@ export class Threading {
 
     private async createWorkers() {
         for (let i = 0; i < this.numWorkers; i++) {
-            const worker = new Worker(new URL("./worker.js", import.meta.url) as NodeURL);
+            const worker = new Worker(new URL("./worker.ts", import.meta.url) as NodeURL);
 
             worker.on('message', (msg) => {
                 if (msg.type === 'taskCompleted') {
