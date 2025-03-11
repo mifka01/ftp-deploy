@@ -1,17 +1,19 @@
 # ftp deploy 🚀
 
+⚠️ **THIS PACKAGE IS FORK OF [ftp-deploy](https://www.npmjs.com/package/@samkirkland/ftp-deploy) PACKAGE WITH  ADDED SUPPORT FOR MULTIPLE CONNECTIONS** ⚠️
+
 Syncs a local folder with a remote folder over ftp.
 
 After the initial sync only differences are synced, making deployments super fast!
 
-[![Latest Stable Version](https://img.shields.io/npm/v/@samkirkland/ftp-deploy.svg?style=flat-square)](https://www.npmjs.com/package/@samkirkland/ftp-deploy)
-[![NPM Downloads](https://img.shields.io/npm/dt/@samkirkland/ftp-deploy.svg?style=flat-square)](https://www.npmjs.com/package/@samkirkland/ftp-deploy)
+[![Latest Stable Version](https://img.shields.io/npm/v/@mifka01/ftp-deploy.svg?style=flat-square)](https://www.npmjs.com/package/@mifka01/ftp-deploy)
+[![NPM Downloads](https://img.shields.io/npm/dt/@mifka01/ftp-deploy.svg?style=flat-square)](https://www.npmjs.com/package/@mifka01/ftp-deploy)
 
 ---
 
 ## How to Run
 #### Option 1 - Run via command line
-- Install the npm package using `npm install @samkirkland/ftp-deploy --only=dev`
+- Install the npm package using `npm install @mifka01/ftp-deploy --only=dev`
 - Run via command line `ftp-deploy --server ftp.samkirkland.com --username test@samkirkland.com --password \"CrazyUniquePassword&%123\"`
 
 - **Or you can add a script to make deployments easier**
@@ -28,12 +30,12 @@ Example of `package.json`:
 ```
 
 #### Option 2 - Run programmatically
-- Install the npm package using `npm install @samkirkland/ftp-deploy --only=dev`
+- Install the npm package using `npm install @mifka01/ftp-deploy --only=dev`
 - Import the code and use it in your code
 
 Example of `myCustomDeployment.js`:
 ```javascript
-import { deploy, excludeDefaults } from "@samkirkland/ftp-deploy";
+import { deploy, excludeDefaults } from "@mifka01/ftp-deploy";
 
 async function deployMyCode() {
   console.log("🚚 Deploy started");
@@ -51,7 +53,7 @@ deployMyCode();
 ```
 
 ### Automatically Deploying
-If you use github as source control you can automatically re-deploy your site on every git commit. [Read more](https://github.com/SamKirkland/FTP-Deploy-Action)
+If you use github as source control you can automatically re-deploy your site on every git commit. [Read more](https://github.com/mifka01/FTP-Deploy-Action)
 
 ---
 
@@ -75,3 +77,4 @@ To list all commands with examples simply run `ftp-deploy` without any options.
 | `--log-level`             | No       | `info`                     | `info`                                        | `minimal`: only important info, `standard`: important info and basic file changes, `verbose`: print everything the script is doing                                 |
 | `--security`              | No       | `strict`                   | `loose`                                       | `strict`: Reject any connection which is not authorized with the list of supplied CAs. `loose`: Allow connection even when the domain is not in certificate        |
 | `--timeout`               | No       | `60000`                    | `30000`                                       | Timeout in milliseconds for FTP operations                                                                                                                         |
+| `--num-of-connections`    | No       | `4`                        | `1`                                           | Number of connections to be made to the server                                                                                                                     |
