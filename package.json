@@ -1,6 +1,6 @@
 {
   "name": "@mifka01/ftp-deploy",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "private": false,
   "description": "Deploy files to a ftp server",
   "main": "dist/module.js",
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "deploy": "tsc && node ./dist/cli.js --log-level standard ---server 127.0.0.1 --port 2121 --protocol ftp --reconnect-timeout 10 --number-of-connections 5 --username \"one\" --password \"admin!\" --exclude dist/** --exclude **/.git* --exclude **/.git*/** --exclude package.json",
+    "deploy": "tsc && node ./dist/cli.js --log-level standard ---server 127.0.0.1 --port 2121 --protocol ftp --reconnect-timeout 10 --number-of-connections 5 --username \"one\" --password \"admin!\" --exclude dist/** --exclude **/.git* --exclude **/node_modules/** --exclude **/.git*/** --exclude package.json",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
     "test-watch": "jest --watch"
@@ -26,7 +26,7 @@
   "author": "Sam Kirkland, Radim Mifka",
   "license": "MIT",
   "dependencies": {
-    "@mifka01/ftp-deploy": "^1.4.4",
+    "@mifka01/ftp-deploy": "^1.4.5",
     "basic-ftp": "^5.0.5",
     "lodash": "^4.17.21",
     "multimatch": "^5.0.0",

@@ -85,7 +85,7 @@ export class FTPSyncProvider implements ISyncProvider {
     }
 
     async createFolder(folderPath: string) {
-        // this.logger.all(`creating folder "${folderPath + "/"}"`);
+        this.logger.all(`creating folder "${folderPath + "/"}"`);
 
         if (this.dryRun === true) {
             return;
@@ -140,9 +140,9 @@ export class FTPSyncProvider implements ISyncProvider {
     }
 
     async uploadFile(filePath: string, type: "upload" | "replace" = "upload") {
-        // const typePresent = type === "upload" ? "uploading" : "replacing";
+        const typePresent = type === "upload" ? "uploading" : "replacing";
         const typePast = type === "upload" ? "uploaded" : "replaced";
-        // this.logger.all(`${typePresent} "${filePath}"`);
+        this.logger.all(`${typePresent} "${filePath}"`);
 
         if (this.dryRun === false) {
             await retryRequest(this.logger, async () => await this.client.uploadFrom(this.localPath + filePath, filePath));
