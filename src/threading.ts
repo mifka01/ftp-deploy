@@ -1,5 +1,7 @@
 import { IFtpDeployArgumentsWithDefaults, ActionRecord, Record, FTPAction } from "./types";
 import { Worker } from "worker_threads";
+import { URL as NodeURL } from "url";
+
 
 export class Threading {
     constructor(numWorkers: number, args: IFtpDeployArgumentsWithDefaults) {
@@ -20,7 +22,7 @@ export class Threading {
 
     private async createWorkers() {
         for (let i = 0; i < this.numWorkers; i++) {
-            const worker = new Worker('./worker.js', { workerData: { path: './worker.ts', args: this.args } });
+            const worker = new Worker(new URL("./worker.js", import.meta.url) as NodeURL);
 
             worker.on('message', (msg) => {
                 if (msg.type === 'taskCompleted') {
