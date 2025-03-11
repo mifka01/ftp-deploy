@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "deploy": "tsc && node ./dist/cli.js --log-level standard ---server 127.0.0.1 --port 2121 --protocol ftp --number-of-connections 3 --username \"one\" --password \"admin!\" --exclude dist/** --exclude **/.git* --exclude **/.git*/** --exclude package.json",
+    "deploy": "tsc && node ./dist/cli.js --log-level standard ---server 127.0.0.1 --port 2121 --protocol ftp --number-of-connections 1 --username \"one\" --password \"admin!\" --exclude dist/** --exclude **/.git* --exclude **/.git*/** --exclude package.json",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
     "test-watch": "jest --watch"

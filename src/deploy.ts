@@ -181,8 +181,8 @@ export async function deploy(args: IFtpDeployArgumentsWithDefaults, logger: ILog
 
         totalBytesUploaded = diffs.sizeUpload + diffs.sizeReplace;
 
-        const numWorkers = args["number-of-connections"];
-        if (numWorkers > 1) {
+        const numWorkers = args["number-of-connections"] - 1;
+        if (numWorkers > 0) {
             const threading = new Threading(numWorkers, args);
 
             timings.start("upload");
