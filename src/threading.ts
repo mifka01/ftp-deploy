@@ -20,7 +20,7 @@ export class Threading {
 
     private async createWorkers() {
         for (let i = 0; i < this.numWorkers; i++) {
-            const worker = new Worker('./src/worker.js', { workerData: { path: './worker.ts', args: this.args } });
+            const worker = new Worker('./worker.js', { workerData: { path: './worker.ts', args: this.args } });
 
             worker.on('message', (msg) => {
                 if (msg.type === 'taskCompleted') {
